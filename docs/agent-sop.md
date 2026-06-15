@@ -49,9 +49,21 @@ There are two valid LLM refinement paths:
 
 1. Script-internal refinement: configure `SUBTITLE_LLM_BASE_URL`, `SUBTITLE_LLM_API_KEY`, and `SUBTITLE_LLM_MODEL` for any OpenAI-compatible provider. In this mode the script refines the Google draft automatically. Use `--translation-refine require` when the caller wants the run to stop unless script-internal LLM refinement succeeds. Check `manifest.json`: `translator_backend`, `translation_refine`, `llm_refine_used`, and `google_chinese_draft_srt`.
 
-2. Agent-side refinement: if the coding agent already runs on Claude, Gemini, MiMo, Codex, or another capable LLM, the agent may proofread the Google draft against the English SRT itself before final burn-in. This does not require an OpenAI-compatible API endpoint. The final response should explicitly state that the Google draft was proofread against the English original.
+2. Agent-side refinement: if the coding agent already runs on Claude, Gemini, MiMo, Codex, or another capable LLM, the agent may proofread the Google draft against the English SRT itself. This does not require an OpenAI-compatible API endpoint, but it does require the agent to explicitly orchestrate that proofreading step and reburn the subtitles from the refined Chinese SRT. The one-command script cannot automatically access the agent's chat model unless that model is exposed through a configured API endpoint. The final response should explicitly state that the Google draft was proofread against the English original.
 
 In short: OpenAI-compatible is only the protocol currently supported by the script's built-in API caller. It is not a limit on which LLM an agent may use for subtitle proofreading.
+
+For agent-side refinement without a configured LLM API endpoint, use a staged run:
+
+```bash
+./burn_bilingual_link.sh "<video-url>" --translation-refine off --stop-after translated
+```
+
+Then proofread the generated `chinese_draft_srt` against `english_srt`, keep the same SRT block count/order/timestamps, and reburn:
+
+```bash
+python3 reburn_bilingual_run.py "<run-dir>"
+```
 
 If the user provides a local file:
 

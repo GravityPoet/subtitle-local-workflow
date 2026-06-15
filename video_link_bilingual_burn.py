@@ -1256,6 +1256,9 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
         llm_refine_model=args.llm_refine_model if llm_refine_used else "",
         llm_refine_error=llm_refine_error,
     )
+    if args.stop_after == "translated":
+        save_manifest("stopped_after_translated", stopped_after="translated")
+        return manifest
 
     height = probe_video_height(video_path, ffprobe_bin)
     cn_size, en_size = pick_ass_sizes(height, args.cn_size, args.en_size)
@@ -1437,6 +1440,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-refine-timeout", type=int, default=DEFAULT_LLM_REFINE_TIMEOUT, help="LLM refine request timeout seconds")
     parser.add_argument("--llm-refine-batch-size", type=int, default=DEFAULT_LLM_REFINE_BATCH_SIZE, help="Subtitle blocks per LLM refine request")
     parser.add_argument("--wrap-width", type=int, default=DEFAULT_WRAP_WIDTH, help="CJK wrap width for zh draft SRT")
+    parser.add_argument(
+        "--stop-after",
+        choices=["none", "translated"],
+        default="none",
+        help="Stop after an intermediate stage. Use translated for agent-side proofreading before burn-in.",
+    )
     parser.add_argument("--max-block-seconds", type=float, default=7.0, help="Maximum source subtitle block duration")
     parser.add_argument("--max-block-chars", type=int, default=84, help="Maximum source subtitle block characters")
     parser.add_argument("--max-gap-seconds", type=float, default=0.75, help="Gap that forces a new subtitle block")
@@ -1493,7 +1502,10 @@ def main() -> int:
     args = parse_args()
     apply_subtitle_profile_defaults(args)
     manifest = process_url(args)
-    print("[done] burned_video=" + str(manifest["burned_video"]))
+    if "burned_video" in manifest:
+        print("[done] burned_video=" + str(manifest["burned_video"]))
+    else:
+        print("[done] stopped_after=" + str(manifest.get("stopped_after", args.stop_after)))
     print("[done] bilingual_srt=" + str(manifest["bilingual_srt"]))
     print("[done] review=" + str(manifest["review"]))
     print("[done] manifest=" + str(Path(str(manifest["run_dir"])) / "manifest.json"))
