@@ -31,6 +31,10 @@ Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
 
 Use Parakeet v2 only. Do not add Parakeet v3 as fallback and do not download v3.
 
+If Parakeet v2 fails in default auto mode, the run should print `[warn]` fallback lines and continue with the next engine. Check `manifest.json`: `transcriber` is the engine actually used, and `transcribe_retry_errors` records failed attempts.
+
+If `--transcriber parakeet-v2` is forced, Parakeet errors should stop the run instead of falling back.
+
 If the user provides a local file:
 
 ```bash

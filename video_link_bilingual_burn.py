@@ -1158,6 +1158,10 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
         transcribe_retry_errors=transcribe_errors,
         subtitle_block_count=len(english_blocks),
     )
+    if transcribe_errors:
+        print(f"[warn] transcription fallback used; final transcriber={transcriber}", file=sys.stderr)
+        for error in transcribe_errors:
+            print(f"[warn] {error}", file=sys.stderr)
 
     translated_texts = translate_texts(
         texts=[block.text for block in english_blocks],

@@ -130,6 +130,8 @@ Notes:
 - The Parakeet v2 model used here is `mlx-community/parakeet-tdt-0.6b-v2`.
 - Set `SUBTITLE_MODEL_CACHE_ROOT` if you want Parakeet/Hugging Face model files stored outside the default cache path.
 - This workflow intentionally uses Parakeet v2 only. It does not download Parakeet v3.
+- If Parakeet v2 fails in the default `auto` mode, the workflow prints `[warn]` fallback lines, records `transcribe_retry_errors` in `manifest.json`, and continues with MLX Whisper, faster-whisper, then whisper.cpp server.
+- If `--transcriber parakeet-v2` is forced, Parakeet errors stop the run instead of falling back.
 
 For a lighter dependency path that skips Parakeet and starts with MLX Whisper:
 
