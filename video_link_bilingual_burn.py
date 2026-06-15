@@ -1426,7 +1426,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-refine-base-url",
         default=DEFAULT_LLM_REFINE_BASE_URL,
-        help="OpenAI-compatible base URL for LLM translation refinement, e.g. http://127.0.0.1:18888/v1",
+        help="OpenAI-compatible base URL for LLM translation refinement, e.g. https://api.openai.com/v1 or a compatible local URL",
     )
     parser.add_argument(
         "--llm-refine-api-key",

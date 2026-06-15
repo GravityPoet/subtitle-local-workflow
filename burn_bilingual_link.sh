@@ -11,10 +11,9 @@ OUTPUT_ROOT="${SUBTITLE_OUTPUT_ROOT:-$DEFAULT_OUTPUT_ROOT}"
 MODEL_CACHE_ROOT="${SUBTITLE_MODEL_CACHE_ROOT:-$DEFAULT_MODEL_CACHE_ROOT}"
 TRANSCRIBER="${SUBTITLE_TRANSCRIBER:-auto}"
 QUALITY="${SUBTITLE_QUALITY:-accurate}"
-TRANSLATION_REFINE="${SUBTITLE_TRANSLATION_REFINE:-require}"
-LLM_BASE_URL="${SUBTITLE_LLM_BASE_URL:-http://127.0.0.1:18888/v1}"
-LLM_MODEL="${SUBTITLE_LLM_MODEL:-gpt-5.4}"
-AI_BRIDGE_ENV="${SUBTITLE_AI_BRIDGE_ENV:-${HOME}/Tools/隧道端口/AI Bridge/bridge.env}"
+TRANSLATION_REFINE="${SUBTITLE_TRANSLATION_REFINE:-auto}"
+LLM_BASE_URL="${SUBTITLE_LLM_BASE_URL:-}"
+LLM_MODEL="${SUBTITLE_LLM_MODEL:-}"
 FFMPEG_FULL="/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
 
 if [ "$#" -lt 1 ]; then
@@ -50,16 +49,6 @@ export TRANSFORMERS_CACHE="$HF_CACHE_ROOT/transformers"
 export SUBTITLE_TRANSLATION_REFINE="$TRANSLATION_REFINE"
 export SUBTITLE_LLM_BASE_URL="$LLM_BASE_URL"
 export SUBTITLE_LLM_MODEL="$LLM_MODEL"
-
-if [ -z "${SUBTITLE_LLM_API_KEY:-}" ] && [ -f "$AI_BRIDGE_ENV" ]; then
-  BRIDGE_KEY="$(awk -F= '$1=="CPA_BRIDGE_API_KEY"{sub(/^[^=]*=/,""); print; exit}' "$AI_BRIDGE_ENV")"
-  if [ -z "$BRIDGE_KEY" ]; then
-    BRIDGE_KEY="$(awk -F= '$1=="BRIDGE_API_KEY"{sub(/^[^=]*=/,""); print; exit}' "$AI_BRIDGE_ENV")"
-  fi
-  if [ -n "$BRIDGE_KEY" ]; then
-    export SUBTITLE_LLM_API_KEY="$BRIDGE_KEY"
-  fi
-fi
 
 NEEDS_PARAKEET=0
 if [ "$QUALITY" = "accurate" ] || [ "$TRANSCRIBER" = "parakeet-v2" ]; then

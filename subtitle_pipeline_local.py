@@ -43,7 +43,7 @@ def env_choice(name: str, default: str, choices: set[str]) -> str:
 DEFAULT_TRANSLATION_REFINE = env_choice("SUBTITLE_TRANSLATION_REFINE", "auto", {"off", "auto", "require"})
 DEFAULT_LLM_REFINE_BASE_URL = os.environ.get("SUBTITLE_LLM_BASE_URL", "")
 DEFAULT_LLM_REFINE_API_KEY = os.environ.get("SUBTITLE_LLM_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-DEFAULT_LLM_REFINE_MODEL = os.environ.get("SUBTITLE_LLM_MODEL", "gpt-5.4")
+DEFAULT_LLM_REFINE_MODEL = os.environ.get("SUBTITLE_LLM_MODEL", "")
 DEFAULT_LLM_REFINE_TIMEOUT = env_int("SUBTITLE_LLM_TIMEOUT", 120)
 DEFAULT_LLM_REFINE_BATCH_SIZE = env_int("SUBTITLE_LLM_BATCH_SIZE", 24)
 

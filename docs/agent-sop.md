@@ -12,7 +12,7 @@ Default requirements:
 - output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
 - model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
 - the wrapper forces Hugging Face caches under the model cache root for the subprocess
-- translation path: Google Translate draft first, then required LLM proofreading/refinement by default
+- translation path: Google Translate draft first; optional OpenAI-compatible LLM proofreading/refinement when configured
 - do not ask about subtitle order; English-on-top and Chinese-on-bottom is the default
 
 Run from the repository root:
@@ -43,7 +43,7 @@ Google Translate via deep-translator
 -> OpenAI-compatible LLM proofreading/refinement
 ```
 
-The wrapper defaults to `--translation-refine require`. If the LLM refinement is not configured or fails, the run should stop before burning subtitles instead of silently using raw machine translation. Check `manifest.json`: `translator_backend` should be `google`, `translation_refine` should be `require`, `llm_refine_used` should be `true`, and `google_chinese_draft_srt` should point to the raw Google draft.
+The open-source wrapper defaults to `--translation-refine auto`: if `SUBTITLE_LLM_BASE_URL`, `SUBTITLE_LLM_API_KEY`, and `SUBTITLE_LLM_MODEL` are configured for any OpenAI-compatible provider, it refines the Google draft; otherwise it continues with the Google draft. Use `--translation-refine require` when the caller wants the run to stop unless LLM refinement succeeds. Check `manifest.json`: `translator_backend`, `translation_refine`, `llm_refine_used`, and `google_chinese_draft_srt`.
 
 If the user provides a local file:
 
