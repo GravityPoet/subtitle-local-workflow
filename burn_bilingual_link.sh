@@ -5,7 +5,7 @@ set -euo pipefail
 # directory under OUTPUT_ROOT and never overwrites source videos.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DEFAULT_OUTPUT_ROOT="${HOME}/Downloads/bilingual-output"
+DEFAULT_OUTPUT_ROOT="${HOME}/Downloads/视频字幕输出"
 DEFAULT_MODEL_CACHE_ROOT="${HOME}/Tools/Local-LLM"
 OUTPUT_ROOT="${SUBTITLE_OUTPUT_ROOT:-$DEFAULT_OUTPUT_ROOT}"
 MODEL_CACHE_ROOT="${SUBTITLE_MODEL_CACHE_ROOT:-$DEFAULT_MODEL_CACHE_ROOT}"

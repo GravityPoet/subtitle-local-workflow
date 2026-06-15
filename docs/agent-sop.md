@@ -9,7 +9,7 @@ Default requirements:
 - hard subtitles burned into the video
 - default profile: `news-box`
 - default transcription quality: `accurate`
-- output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
+- output root: `$HOME/Downloads/视频字幕输出`, unless `SUBTITLE_OUTPUT_ROOT` is set
 - model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
 - the wrapper forces Hugging Face caches under the model cache root for the subprocess
 - translation path: Google Translate draft first; then either script-internal OpenAI-compatible refinement, or agent-side proofreading with the current LLM

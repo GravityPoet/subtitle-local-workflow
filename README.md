@@ -55,7 +55,7 @@ brew install libass ffmpeg-full
 ./burn_bilingual_link.sh "/absolute/path/to/video.mp4"
 ```
 
-🎉 就是这么简单粗暴！默认输出目录将保存在：`$HOME/Downloads/bilingual-output`。
+🎉 就是这么简单粗暴！默认输出目录将保存在：`$HOME/Downloads/视频字幕输出`。
 
 **自定义输出路径：**
 ```bash
