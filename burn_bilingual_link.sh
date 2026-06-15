@@ -6,8 +6,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_OUTPUT_ROOT="${HOME}/Downloads/bilingual-output"
+DEFAULT_MODEL_CACHE_ROOT="${HOME}/Tools/Local-LLM"
 OUTPUT_ROOT="${SUBTITLE_OUTPUT_ROOT:-$DEFAULT_OUTPUT_ROOT}"
+MODEL_CACHE_ROOT="${SUBTITLE_MODEL_CACHE_ROOT:-$DEFAULT_MODEL_CACHE_ROOT}"
 TRANSCRIBER="${SUBTITLE_TRANSCRIBER:-auto}"
+QUALITY="${SUBTITLE_QUALITY:-fast}"
 FFMPEG_FULL="/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
 
 if [ "$#" -lt 1 ]; then
@@ -32,6 +35,33 @@ case "$VIDEO_INPUT" in
 esac
 
 mkdir -p "$OUTPUT_ROOT"
+mkdir -p "$MODEL_CACHE_ROOT"
+
+HF_CACHE_ROOT="${MODEL_CACHE_ROOT}/huggingface"
+mkdir -p "$HF_CACHE_ROOT/home" "$HF_CACHE_ROOT/hub" "$HF_CACHE_ROOT/xet" "$HF_CACHE_ROOT/transformers"
+export HF_HOME="$HF_CACHE_ROOT/home"
+export HF_HUB_CACHE="$HF_CACHE_ROOT/hub"
+export HF_XET_CACHE="$HF_CACHE_ROOT/xet"
+export TRANSFORMERS_CACHE="$HF_CACHE_ROOT/transformers"
+
+NEEDS_PARAKEET=0
+if [ "$QUALITY" = "accurate" ] || [ "$TRANSCRIBER" = "parakeet-v2" ]; then
+  NEEDS_PARAKEET=1
+fi
+
+PREVIOUS_ARG=""
+for ARG in "$@"; do
+  if [ "$PREVIOUS_ARG" = "--quality" ] && [ "$ARG" = "accurate" ]; then
+    NEEDS_PARAKEET=1
+  fi
+  if [ "$PREVIOUS_ARG" = "--transcriber" ] && [ "$ARG" = "parakeet-v2" ]; then
+    NEEDS_PARAKEET=1
+  fi
+  case "$ARG" in
+    --quality=accurate|--transcriber=parakeet-v2) NEEDS_PARAKEET=1 ;;
+  esac
+  PREVIOUS_ARG="$ARG"
+done
 
 if [ -x "$FFMPEG_FULL" ]; then
   # Subshell disables pipefail to avoid SIGPIPE false-positive (bash 3.2 + set -o pipefail)
@@ -48,11 +78,18 @@ fi
 
 cd "$SCRIPT_DIR"
 
-uv run --python 3.11 --with yt-dlp --with deep-translator --with mlx-whisper --with faster-whisper \
+UV_PACKAGES=(--with yt-dlp --with deep-translator --with mlx-whisper --with faster-whisper)
+if [ "$NEEDS_PARAKEET" -eq 1 ]; then
+  UV_PACKAGES+=(--with parakeet-mlx)
+fi
+
+uv run --python 3.11 "${UV_PACKAGES[@]}" \
   python "$SCRIPT_DIR/video_link_bilingual_burn.py" \
   "$VIDEO_URL" \
   --output-root "$OUTPUT_ROOT" \
+  --model-cache-root "$MODEL_CACHE_ROOT" \
   --transcriber "$TRANSCRIBER" \
+  --quality "$QUALITY" \
   --subtitle-profile news-box \
-  "${LOCAL_ARGS[@]}" \
+  ${LOCAL_ARGS[@]+"${LOCAL_ARGS[@]}"} \
   "$@"

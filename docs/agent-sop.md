@@ -9,6 +9,8 @@ Default requirements:
 - hard subtitles burned into the video
 - default profile: `news-box`
 - output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
+- model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
+- the wrapper forces Hugging Face caches under the model cache root for the subprocess
 - do not ask about subtitle order; English-on-top and Chinese-on-bottom is the default
 
 Run from the repository root:
@@ -16,6 +18,23 @@ Run from the repository root:
 ```bash
 ./burn_bilingual_link.sh "<video-url>"
 ```
+
+For English videos where higher local ASR accuracy/speed is preferred:
+
+```bash
+./burn_bilingual_link.sh "<video-url>" --quality accurate
+```
+
+`--quality accurate` means:
+
+```text
+Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
+-> MLX Whisper
+-> faster-whisper
+-> whisper.cpp server
+```
+
+Use Parakeet v2 only. Do not add Parakeet v3 as fallback and do not download v3.
 
 If the user provides a local file:
 

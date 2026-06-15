@@ -54,6 +54,29 @@ Override it with:
 SUBTITLE_OUTPUT_ROOT="/absolute/path/to/output" ./burn_bilingual_link.sh "https://example.com/video-url"
 ```
 
+Downloaded local ASR models are cached under:
+
+```text
+$HOME/Tools/Local-LLM
+```
+
+Override it with:
+
+```bash
+SUBTITLE_MODEL_CACHE_ROOT="/absolute/path/to/local-models" ./burn_bilingual_link.sh "https://example.com/video-url" --quality accurate
+```
+
+The wrapper also sets Hugging Face cache variables under that root so ASR model downloads stay grouped:
+
+```text
+$SUBTITLE_MODEL_CACHE_ROOT/huggingface/home
+$SUBTITLE_MODEL_CACHE_ROOT/huggingface/hub
+$SUBTITLE_MODEL_CACHE_ROOT/huggingface/xet
+$SUBTITLE_MODEL_CACHE_ROOT/huggingface/transformers
+```
+
+The wrapper intentionally overrides `HF_HOME`, `HF_HUB_CACHE`, `HF_XET_CACHE`, and `TRANSFORMERS_CACHE` for the subprocess so model files do not scatter into the default user cache.
+
 ## Default Bilingual Layout
 
 The URL workflow defaults to the `news-box` subtitle profile:
@@ -89,6 +112,33 @@ You can force a specific engine:
 ./burn_bilingual_link.sh "https://example.com/video-url" --transcriber mlx
 ./burn_bilingual_link.sh "https://example.com/video-url" --transcriber faster
 ./burn_bilingual_link.sh "https://example.com/video-url" --transcriber server
+```
+
+For English videos where local transcription accuracy and speed matter more than the most conservative default, use:
+
+```bash
+./burn_bilingual_link.sh "https://example.com/video-url" --quality accurate
+```
+
+Accurate mode uses this ladder:
+
+```text
+Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
+-> MLX Whisper
+-> faster-whisper
+-> whisper.cpp server fallback
+```
+
+Notes:
+
+- Parakeet v2 is English-focused and fast on Apple Silicon through `parakeet-mlx`.
+- The Parakeet v2 model used here is `mlx-community/parakeet-tdt-0.6b-v2`.
+- Set `SUBTITLE_MODEL_CACHE_ROOT` if you want Parakeet/Hugging Face model files stored outside the default cache path.
+- This workflow intentionally uses Parakeet v2 only. It does not download Parakeet v3.
+- To force Parakeet v2 without fallback:
+
+```bash
+./burn_bilingual_link.sh "https://example.com/video-url" --transcriber parakeet-v2
 ```
 
 The default whisper.cpp server URL is:

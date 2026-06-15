@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -38,6 +39,8 @@ DEFAULT_FORMAT = (
     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 )
 FALLBACK_FORMAT = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+DEFAULT_PARAKEET_V2_MODEL = "mlx-community/parakeet-tdt-0.6b-v2"
+DEFAULT_MODEL_CACHE_ROOT = Path.home() / "Tools" / "Local-LLM"
 SENTENCE_END = ".?!。？！…"
 SOFT_BREAK = ",;:，；：、"
 ASS_SIZE_TABLE = {360: (22, 13), 720: (22, 13), 1080: (20, 12), 2160: (20, 12)}
@@ -409,6 +412,76 @@ def transcribe_with_faster(audio_path: Path, language: str | None, model_name: s
     }
 
 
+def transcribe_with_parakeet_v2(
+    audio_path: Path,
+    language: str | None,
+    model_name: str,
+    max_line_ms: int,
+    pause_ms: int,
+    max_block_chars: int,
+    chunk_duration: float,
+    overlap_duration: float,
+    cache_dir: Path,
+) -> tuple[list[SubtitleBlock], dict[str, Any]]:
+    if language is not None and not language.lower().startswith("en"):
+        raise WorkflowError(
+            f"Parakeet v2 is English-only; requested transcribe language is {language!r}"
+        )
+
+    try:
+        from parakeet_mlx import DecodingConfig, SentenceConfig, from_pretrained
+    except ModuleNotFoundError as exc:
+        raise WorkflowError(
+            "parakeet-mlx is not installed; run the wrapper with `--quality accurate` "
+            "or install `parakeet-mlx`"
+        ) from exc
+
+    max_words = max(8, min(28, max_block_chars // 5))
+    sentence_config = SentenceConfig(
+        max_words=max_words,
+        silence_gap=max(0.2, pause_ms / 1000),
+        max_duration=max(1.0, max_line_ms / 1000),
+    )
+    decoding_config = DecodingConfig(sentence=sentence_config)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    model = from_pretrained(model_name, cache_dir=str(cache_dir))
+    result = model.transcribe(
+        str(audio_path),
+        decoding_config=decoding_config,
+        chunk_duration=chunk_duration,
+        overlap_duration=overlap_duration,
+    )
+
+    blocks: list[SubtitleBlock] = []
+    for sentence in getattr(result, "sentences", []) or []:
+        text = normalize_spaces(str(getattr(sentence, "text", "")))
+        if not text:
+            continue
+        start = float(getattr(sentence, "start"))
+        end = float(getattr(sentence, "end"))
+        if end <= start:
+            end = start + 0.3
+        if blocks and start < blocks[-1].end:
+            start = blocks[-1].end
+        if end <= start:
+            end = start + 0.3
+        blocks.append(SubtitleBlock(index=len(blocks) + 1, start=start, end=end, text=text))
+
+    return blocks, {
+        "model": model_name,
+        "cache_dir": str(cache_dir),
+        "result_text": normalize_spaces(str(getattr(result, "text", ""))),
+        "sentence_count": len(blocks),
+        "sentence_config": {
+            "max_words": max_words,
+            "silence_gap": sentence_config.silence_gap,
+            "max_duration": sentence_config.max_duration,
+        },
+        "chunk_duration": chunk_duration,
+        "overlap_duration": overlap_duration,
+    }
+
+
 def flush_words(words: list[Any]) -> dict[str, Any] | None:
     text = "".join(str(word.word) for word in words).strip()
     if not text:
@@ -569,10 +642,36 @@ def transcribe_audio(audio_path: Path, args: argparse.Namespace) -> tuple[dict[s
         except Exception as exc:
             raise
 
-    local_attempts = ["mlx", "faster"] if args.transcriber == "auto" else [args.transcriber]
+    if args.transcriber == "auto":
+        local_attempts = ["parakeet-v2", "mlx", "faster"] if args.quality == "accurate" else ["mlx", "faster"]
+    else:
+        local_attempts = [args.transcriber]
+
     for engine in local_attempts:
         try:
             started = time.time()
+            if engine == "parakeet-v2":
+                blocks, metadata = transcribe_with_parakeet_v2(
+                    audio_path=audio_path,
+                    language=language,
+                    model_name=args.parakeet_model,
+                    max_line_ms=args.max_line_ms,
+                    pause_ms=args.pause_ms,
+                    max_block_chars=args.max_block_chars,
+                    chunk_duration=args.parakeet_chunk_duration,
+                    overlap_duration=args.parakeet_overlap_duration,
+                    cache_dir=args.model_cache_root / "parakeet-models" / "huggingface",
+                )
+                validate_blocks(blocks)
+                payload = blocks_to_payload(
+                    blocks,
+                    {
+                        "transcriber": engine,
+                        "metadata": metadata,
+                        "elapsed_seconds": round(time.time() - started, 3),
+                    },
+                )
+                return payload, blocks, engine, errors
             if engine == "mlx":
                 local_segments, metadata = transcribe_with_mlx(audio_path, language)
             elif engine == "faster":
@@ -1161,6 +1260,7 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
         "ffmpeg_detection_notes": ffmpeg_detection_notes,
         "fix_black_first_frame": args.fix_black_first_frame,
         "leading_black_end": leading_black_end,
+        "model_cache_root": str(args.model_cache_root),
         "ass_style": {
             "font": args.font,
             "cn_size": cn_size,
@@ -1204,13 +1304,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ffprobe-bin", default=None, help="Optional ffprobe binary override")
     parser.add_argument(
         "--transcriber",
-        choices=["auto", "server", "mlx", "faster"],
+        choices=["auto", "server", "mlx", "faster", "parakeet-v2"],
         default="auto",
-        help="Transcription engine. auto tries MLX, then faster-whisper, then whisper.cpp server fallback.",
+        help="Transcription engine. auto uses the selected quality ladder.",
+    )
+    parser.add_argument(
+        "--quality",
+        choices=["fast", "accurate"],
+        default="fast",
+        help="Transcription quality ladder. fast tries MLX first; accurate tries Parakeet v2 first.",
     )
     parser.add_argument("--server-timeout", type=int, default=15, help="whisper.cpp server request timeout seconds")
     parser.add_argument("--transcribe-language", default="auto", help="Whisper language code, or auto")
     parser.add_argument("--faster-model", default="large-v3-turbo", help="faster-whisper model name")
+    parser.add_argument("--parakeet-model", default=DEFAULT_PARAKEET_V2_MODEL, help="Parakeet v2 MLX model name")
+    parser.add_argument("--parakeet-chunk-duration", type=float, default=120.0, help="Parakeet chunk duration seconds")
+    parser.add_argument("--parakeet-overlap-duration", type=float, default=15.0, help="Parakeet chunk overlap seconds")
+    parser.add_argument(
+        "--model-cache-root",
+        type=Path,
+        default=Path(os.environ.get("SUBTITLE_MODEL_CACHE_ROOT", DEFAULT_MODEL_CACHE_ROOT)),
+        help="Root directory for downloaded local ASR models.",
+    )
     parser.add_argument("--local", type=Path, default=None, help="Use a local video file instead of downloading from URL")
     parser.add_argument("--browser", default="chrome", help="Browser used for yt-dlp cookie fallback")
     parser.add_argument("--proxy", default="", help="Optional proxy, e.g. http://127.0.0.1:7890")
