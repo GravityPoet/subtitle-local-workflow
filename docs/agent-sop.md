@@ -12,7 +12,7 @@ Default requirements:
 - output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
 - model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
 - the wrapper forces Hugging Face caches under the model cache root for the subprocess
-- translation path: Google Translate draft first; optional OpenAI-compatible LLM proofreading/refinement when configured
+- translation path: Google Translate draft first; then either script-internal OpenAI-compatible refinement, or agent-side proofreading with the current LLM
 - do not ask about subtitle order; English-on-top and Chinese-on-bottom is the default
 
 Run from the repository root:
@@ -32,6 +32,8 @@ Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
 
 Use Parakeet v2 only. Do not add Parakeet v3 as fallback and do not download v3.
 
+The open-source default keeps this fallback ladder so the project works on more machines. If a workflow must notice Parakeet failures instead of silently using another ASR engine, force `--transcriber parakeet-v2`.
+
 If Parakeet v2 fails in default auto mode, the run should print `[warn]` fallback lines and continue with the next engine. Check `manifest.json`: `transcriber` is the engine actually used, and `transcribe_retry_errors` records failed attempts.
 
 If `--transcriber parakeet-v2` is forced, Parakeet errors should stop the run instead of falling back.
@@ -40,10 +42,16 @@ Default translation/refinement:
 
 ```text
 Google Translate via deep-translator
--> OpenAI-compatible LLM proofreading/refinement
+-> LLM proofreading/refinement
 ```
 
-The open-source wrapper defaults to `--translation-refine auto`: if `SUBTITLE_LLM_BASE_URL`, `SUBTITLE_LLM_API_KEY`, and `SUBTITLE_LLM_MODEL` are configured for any OpenAI-compatible provider, it refines the Google draft; otherwise it continues with the Google draft. Use `--translation-refine require` when the caller wants the run to stop unless LLM refinement succeeds. Check `manifest.json`: `translator_backend`, `translation_refine`, `llm_refine_used`, and `google_chinese_draft_srt`.
+There are two valid LLM refinement paths:
+
+1. Script-internal refinement: configure `SUBTITLE_LLM_BASE_URL`, `SUBTITLE_LLM_API_KEY`, and `SUBTITLE_LLM_MODEL` for any OpenAI-compatible provider. In this mode the script refines the Google draft automatically. Use `--translation-refine require` when the caller wants the run to stop unless script-internal LLM refinement succeeds. Check `manifest.json`: `translator_backend`, `translation_refine`, `llm_refine_used`, and `google_chinese_draft_srt`.
+
+2. Agent-side refinement: if the coding agent already runs on Claude, Gemini, MiMo, Codex, or another capable LLM, the agent may proofread the Google draft against the English SRT itself before final burn-in. This does not require an OpenAI-compatible API endpoint. The final response should explicitly state that the Google draft was proofread against the English original.
+
+In short: OpenAI-compatible is only the protocol currently supported by the script's built-in API caller. It is not a limit on which LLM an agent may use for subtitle proofreading.
 
 If the user provides a local file:
 
