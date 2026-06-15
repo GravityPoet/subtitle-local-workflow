@@ -16,7 +16,13 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from subtitle_pipeline_local import (
+    DEFAULT_LLM_REFINE_API_KEY,
+    DEFAULT_LLM_REFINE_BASE_URL,
+    DEFAULT_LLM_REFINE_BATCH_SIZE,
+    DEFAULT_LLM_REFINE_MODEL,
+    DEFAULT_LLM_REFINE_TIMEOUT,
     DEFAULT_SERVER_URL,
+    DEFAULT_TRANSLATION_REFINE,
     DEFAULT_TRANSLATOR_BACKEND,
     DEFAULT_WRAP_WIDTH,
     SubtitleBlock,
@@ -27,6 +33,7 @@ from subtitle_pipeline_local import (
     render_plain_srt,
     render_srt,
     seconds_to_srt,
+    refine_translations_with_llm,
     translate_texts,
     validate_blocks,
     write_atomic,
@@ -845,6 +852,50 @@ def validate_translation_quality(texts: Sequence[str], target_lang: str, min_cjk
         )
 
 
+def maybe_refine_translations(
+    source_texts: list[str],
+    draft_texts: list[str],
+    args: argparse.Namespace,
+) -> tuple[list[str], bool, str]:
+    if args.translation_refine == "off":
+        return draft_texts, False, ""
+
+    missing: list[str] = []
+    if not args.llm_refine_base_url:
+        missing.append("--llm-refine-base-url or SUBTITLE_LLM_BASE_URL")
+    if not args.llm_refine_api_key:
+        missing.append("--llm-refine-api-key or SUBTITLE_LLM_API_KEY")
+    if not args.llm_refine_model:
+        missing.append("--llm-refine-model or SUBTITLE_LLM_MODEL")
+
+    if missing:
+        message = "LLM translation refinement is not configured: missing " + ", ".join(missing)
+        if args.translation_refine == "require":
+            raise WorkflowError(message)
+        print(f"[warn] {message}; using raw machine translation", file=sys.stderr)
+        return draft_texts, False, message
+
+    try:
+        refined_texts = refine_translations_with_llm(
+            source_texts=source_texts,
+            draft_texts=draft_texts,
+            target_lang=args.target_lang,
+            base_url=args.llm_refine_base_url,
+            api_key=args.llm_refine_api_key,
+            model=args.llm_refine_model,
+            timeout=args.llm_refine_timeout,
+            batch_size=args.llm_refine_batch_size,
+        )
+    except Exception as exc:
+        message = f"LLM translation refinement failed: {exc}"
+        if args.translation_refine == "require":
+            raise WorkflowError(message) from exc
+        print(f"[warn] {message}; using raw machine translation", file=sys.stderr)
+        return draft_texts, False, message
+
+    return refined_texts, True, ""
+
+
 def render_bilingual_srt(
     english_blocks: list[SubtitleBlock],
     chinese_blocks: list[SubtitleBlock],
@@ -1136,6 +1187,7 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
     stem = safe_filename(video_path.stem)
     verbose_json_path = run_dir / f"{stem}.verbose.json"
     english_srt_path = run_dir / f"{stem}.en.srt"
+    google_chinese_srt_path = run_dir / f"{stem}.zh.google-draft.srt"
     chinese_srt_path = run_dir / f"{stem}.zh.draft.srt"
     bilingual_srt_path = run_dir / f"{stem}.en-top.zh-bottom.srt"
     ass_path = run_dir / f"{stem}.en-top.zh-bottom.ass"
@@ -1163,12 +1215,25 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
         for error in transcribe_errors:
             print(f"[warn] {error}", file=sys.stderr)
 
-    translated_texts = translate_texts(
-        texts=[block.text for block in english_blocks],
+    source_texts = [block.text for block in english_blocks]
+    google_translated_texts = translate_texts(
+        texts=source_texts,
         glossary=glossary,
         source_lang=args.source_lang,
         target_lang=args.target_lang,
         translator_backend=args.translator_backend,
+    )
+    google_chinese_blocks = [
+        SubtitleBlock(index=block.index, start=block.start, end=block.end, text=google_translated_texts[index])
+        for index, block in enumerate(english_blocks)
+    ]
+    validate_blocks(google_chinese_blocks)
+    write_atomic(google_chinese_srt_path, render_srt(google_chinese_blocks, args.wrap_width))
+
+    translated_texts, llm_refine_used, llm_refine_error = maybe_refine_translations(
+        source_texts=source_texts,
+        draft_texts=google_translated_texts,
+        args=args,
     )
     validate_translation_quality(translated_texts, args.target_lang, args.min_cjk_block_ratio)
     chinese_blocks = [
@@ -1181,10 +1246,15 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
     write_atomic(bilingual_srt_path, render_bilingual_srt(english_blocks, chinese_blocks))
     save_manifest(
         "translated",
+        google_chinese_draft_srt=str(google_chinese_srt_path),
         chinese_draft_srt=str(chinese_srt_path),
         bilingual_srt=str(bilingual_srt_path),
         review=str(review_path),
         translator_backend=args.translator_backend,
+        translation_refine=args.translation_refine,
+        llm_refine_used=llm_refine_used,
+        llm_refine_model=args.llm_refine_model if llm_refine_used else "",
+        llm_refine_error=llm_refine_error,
     )
 
     height = probe_video_height(video_path, ffprobe_bin)
@@ -1251,6 +1321,7 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
         "downloaded_video": str(video_path),
         "verbose_json": str(verbose_json_path),
         "english_srt": str(english_srt_path),
+        "google_chinese_draft_srt": str(google_chinese_srt_path),
         "chinese_draft_srt": str(chinese_srt_path),
         "bilingual_srt": str(bilingual_srt_path),
         "bilingual_ass": str(ass_path),
@@ -1282,6 +1353,10 @@ def process_url(args: argparse.Namespace) -> dict[str, object]:
             "zh_color": args.zh_color,
         },
         "translator_backend": args.translator_backend,
+        "translation_refine": args.translation_refine,
+        "llm_refine_used": llm_refine_used,
+        "llm_refine_model": args.llm_refine_model if llm_refine_used else "",
+        "llm_refine_error": llm_refine_error,
         "transcriber": transcriber,
         "transcribe_retry_errors": transcribe_errors,
         "download_retry_errors": download_errors,
@@ -1342,6 +1417,25 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_TRANSLATOR_BACKEND,
         help="Translation backend. Google needs deep-translator; Argos needs installed Argos packages.",
     )
+    parser.add_argument(
+        "--translation-refine",
+        choices=["off", "auto", "require"],
+        default=DEFAULT_TRANSLATION_REFINE,
+        help="Optional LLM proofread pass after machine translation. require stops if refinement fails.",
+    )
+    parser.add_argument(
+        "--llm-refine-base-url",
+        default=DEFAULT_LLM_REFINE_BASE_URL,
+        help="OpenAI-compatible base URL for LLM translation refinement, e.g. http://127.0.0.1:18888/v1",
+    )
+    parser.add_argument(
+        "--llm-refine-api-key",
+        default=DEFAULT_LLM_REFINE_API_KEY,
+        help="API key for LLM translation refinement. Prefer SUBTITLE_LLM_API_KEY instead of passing this on the command line.",
+    )
+    parser.add_argument("--llm-refine-model", default=DEFAULT_LLM_REFINE_MODEL, help="LLM model for translation refinement")
+    parser.add_argument("--llm-refine-timeout", type=int, default=DEFAULT_LLM_REFINE_TIMEOUT, help="LLM refine request timeout seconds")
+    parser.add_argument("--llm-refine-batch-size", type=int, default=DEFAULT_LLM_REFINE_BATCH_SIZE, help="Subtitle blocks per LLM refine request")
     parser.add_argument("--wrap-width", type=int, default=DEFAULT_WRAP_WIDTH, help="CJK wrap width for zh draft SRT")
     parser.add_argument("--max-block-seconds", type=float, default=7.0, help="Maximum source subtitle block duration")
     parser.add_argument("--max-block-chars", type=int, default=84, help="Maximum source subtitle block characters")

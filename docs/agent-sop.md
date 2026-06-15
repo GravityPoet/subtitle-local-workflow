@@ -12,6 +12,7 @@ Default requirements:
 - output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
 - model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
 - the wrapper forces Hugging Face caches under the model cache root for the subprocess
+- translation path: Google Translate draft first, then required LLM proofreading/refinement by default
 - do not ask about subtitle order; English-on-top and Chinese-on-bottom is the default
 
 Run from the repository root:
@@ -34,6 +35,15 @@ Use Parakeet v2 only. Do not add Parakeet v3 as fallback and do not download v3.
 If Parakeet v2 fails in default auto mode, the run should print `[warn]` fallback lines and continue with the next engine. Check `manifest.json`: `transcriber` is the engine actually used, and `transcribe_retry_errors` records failed attempts.
 
 If `--transcriber parakeet-v2` is forced, Parakeet errors should stop the run instead of falling back.
+
+Default translation/refinement:
+
+```text
+Google Translate via deep-translator
+-> OpenAI-compatible LLM proofreading/refinement
+```
+
+The wrapper defaults to `--translation-refine require`. If the LLM refinement is not configured or fails, the run should stop before burning subtitles instead of silently using raw machine translation. Check `manifest.json`: `translator_backend` should be `google`, `translation_refine` should be `require`, `llm_refine_used` should be `true`, and `google_chinese_draft_srt` should point to the raw Google draft.
 
 If the user provides a local file:
 

@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -20,6 +22,30 @@ DEFAULT_MAX_BLOCK_CHARS = 84
 DEFAULT_MAX_GAP_SECONDS = 0.75
 DEFAULT_WRAP_WIDTH = 22
 DEFAULT_TRANSLATOR_BACKEND = "google"
+
+
+def env_int(name: str, default: int, minimum: int = 1) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+def env_choice(name: str, default: str, choices: set[str]) -> str:
+    value = os.environ.get(name, default)
+    return value if value in choices else default
+
+
+DEFAULT_TRANSLATION_REFINE = env_choice("SUBTITLE_TRANSLATION_REFINE", "auto", {"off", "auto", "require"})
+DEFAULT_LLM_REFINE_BASE_URL = os.environ.get("SUBTITLE_LLM_BASE_URL", "")
+DEFAULT_LLM_REFINE_API_KEY = os.environ.get("SUBTITLE_LLM_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+DEFAULT_LLM_REFINE_MODEL = os.environ.get("SUBTITLE_LLM_MODEL", "gpt-5.4")
+DEFAULT_LLM_REFINE_TIMEOUT = env_int("SUBTITLE_LLM_TIMEOUT", 120)
+DEFAULT_LLM_REFINE_BATCH_SIZE = env_int("SUBTITLE_LLM_BATCH_SIZE", 24)
 
 
 @dataclass
@@ -290,6 +316,136 @@ def translate_texts(
     raise ValueError(f"unsupported translator backend: {translator_backend}")
 
 
+def llm_chat_completions_url(base_url: str) -> str:
+    cleaned = base_url.rstrip("/")
+    if not cleaned:
+        raise ValueError("LLM refine base URL must not be empty")
+    if cleaned.endswith("/chat/completions"):
+        return cleaned
+    return f"{cleaned}/chat/completions"
+
+
+def extract_json_array(content: str) -> list[str]:
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    if not cleaned.startswith("["):
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start >= 0 and end > start:
+            cleaned = cleaned[start : end + 1]
+    payload = json.loads(cleaned)
+    if not isinstance(payload, list) or not all(isinstance(item, str) for item in payload):
+        raise ValueError("LLM refine response must be a JSON array of strings")
+    return [normalize_spaces(item) for item in payload]
+
+
+def refine_translation_batch_with_llm(
+    source_texts: list[str],
+    draft_texts: list[str],
+    target_lang: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout: int,
+) -> list[str]:
+    if len(source_texts) != len(draft_texts):
+        raise ValueError("source and draft translation counts differ")
+    if not api_key:
+        raise ValueError("LLM refine API key is missing")
+    if not model:
+        raise ValueError("LLM refine model is missing")
+
+    items = [
+        {"index": index, "english": source, "google_draft": draft}
+        for index, (source, draft) in enumerate(zip(source_texts, draft_texts), start=1)
+    ]
+    system_prompt = (
+        "You are a professional English-to-Simplified-Chinese subtitle proofreader for "
+        "finance, markets, technology, and news interviews. Refine Google Translate drafts "
+        "against the English source. Preserve meaning, names, numbers, tickers, company names, "
+        "and finance terminology. Keep each subtitle concise and natural for on-screen reading. "
+        "Do not add explanations. Return only a JSON array of strings with exactly the same "
+        "order and count as the input."
+    )
+    user_prompt = (
+        "Refine these subtitle translations into natural Simplified Chinese. "
+        f"Target language: {target_lang}. Input JSON:\n"
+        + json.dumps(items, ensure_ascii=False)
+    )
+    request_payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.1,
+    }
+    request = urllib.request.Request(
+        llm_chat_completions_url(base_url),
+        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"LLM refine HTTP {exc.code}: {body[:500]}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"LLM refine request failed: {exc}") from exc
+
+    choices = response_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("LLM refine response missing choices")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise ValueError("LLM refine response missing message")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("LLM refine response content is empty")
+    refined = extract_json_array(content)
+    if len(refined) != len(draft_texts):
+        raise ValueError(f"LLM refine returned {len(refined)} items for {len(draft_texts)} inputs")
+    return refined
+
+
+def refine_translations_with_llm(
+    source_texts: list[str],
+    draft_texts: list[str],
+    target_lang: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout: int,
+    batch_size: int,
+) -> list[str]:
+    if batch_size <= 0:
+        raise ValueError("LLM refine batch size must be positive")
+    refined: list[str] = []
+    for offset in range(0, len(draft_texts), batch_size):
+        source_batch = source_texts[offset : offset + batch_size]
+        draft_batch = draft_texts[offset : offset + batch_size]
+        refined.extend(
+            refine_translation_batch_with_llm(
+                source_texts=source_batch,
+                draft_texts=draft_batch,
+                target_lang=target_lang,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                timeout=timeout,
+            )
+        )
+        time.sleep(0.2)
+    return refined
+
+
 def wrap_chinese_text(text: str, width: int) -> str:
     cleaned = normalize_spaces(text)
     if not cleaned:
@@ -429,6 +585,12 @@ def process_video(
     source_lang: str,
     target_lang: str,
     translator_backend: str,
+    translation_refine: str,
+    llm_refine_base_url: str,
+    llm_refine_api_key: str,
+    llm_refine_model: str,
+    llm_refine_timeout: int,
+    llm_refine_batch_size: int,
     wrap_width: int,
     verbose_json_override: Path | None,
 ) -> None:
@@ -437,6 +599,7 @@ def process_video(
     out_dir.mkdir(parents=True, exist_ok=True)
     verbose_json_path = out_dir / f"{stem}.verbose.json"
     english_srt_path = out_dir / f"{stem}.en.srt"
+    google_chinese_draft_path = out_dir / f"{stem}.zh.google-draft.srt"
     chinese_draft_path = out_dir / f"{stem}.zh.draft.srt"
     chinese_srt_path = video_path.with_name(f"{stem}.{target_lang_tag}.srt")
     review_path = out_dir / f"{stem}.review.txt"
@@ -466,13 +629,52 @@ def process_video(
         validate_blocks(english_blocks)
         write_atomic(english_srt_path, render_plain_srt(english_blocks))
 
+        source_texts = [block.text for block in english_blocks]
         translated_texts = translate_texts(
-            texts=[block.text for block in english_blocks],
+            texts=source_texts,
             glossary=glossary,
             source_lang=source_lang,
             target_lang=target_lang,
             translator_backend=translator_backend,
         )
+        google_chinese_blocks = [
+            SubtitleBlock(index=block.index, start=block.start, end=block.end, text=translated_texts[idx - 1])
+            for idx, block in enumerate(english_blocks, start=1)
+        ]
+        validate_blocks(google_chinese_blocks)
+        write_atomic(google_chinese_draft_path, render_srt(google_chinese_blocks, wrap_width))
+
+        if translation_refine != "off":
+            missing = []
+            if not llm_refine_base_url:
+                missing.append("--llm-refine-base-url or SUBTITLE_LLM_BASE_URL")
+            if not llm_refine_api_key:
+                missing.append("--llm-refine-api-key or SUBTITLE_LLM_API_KEY")
+            if not llm_refine_model:
+                missing.append("--llm-refine-model or SUBTITLE_LLM_MODEL")
+            if missing:
+                message = "LLM translation refinement is not configured: missing " + ", ".join(missing)
+                if translation_refine == "require":
+                    raise RuntimeError(message)
+                print(f"[warn] {message}; using raw machine translation", file=sys.stderr)
+            else:
+                try:
+                    translated_texts = refine_translations_with_llm(
+                        source_texts=source_texts,
+                        draft_texts=translated_texts,
+                        target_lang=target_lang,
+                        base_url=llm_refine_base_url,
+                        api_key=llm_refine_api_key,
+                        model=llm_refine_model,
+                        timeout=llm_refine_timeout,
+                        batch_size=llm_refine_batch_size,
+                    )
+                    print(f"[info] LLM translation refinement used: {llm_refine_model}")
+                except Exception as exc:
+                    if translation_refine == "require":
+                        raise RuntimeError(f"LLM translation refinement failed: {exc}") from exc
+                    print(f"[warn] LLM translation refinement failed: {exc}; using raw machine translation", file=sys.stderr)
+
         chinese_blocks = [
             SubtitleBlock(index=block.index, start=block.start, end=block.end, text=translated_texts[idx - 1])
             for idx, block in enumerate(english_blocks, start=1)
@@ -486,6 +688,7 @@ def process_video(
         print(f"[done] input={video_path}")
         print(f"       verbose_json={verbose_json_path}")
         print(f"       english_srt={english_srt_path}")
+        print(f"       google_chinese_draft_srt={google_chinese_draft_path}")
         print(f"       chinese_draft_srt={chinese_draft_path}")
         print(f"       chinese_srt={chinese_srt_path}")
         print(f"       review={review_path}")
@@ -505,6 +708,25 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_TRANSLATOR_BACKEND,
         help="Translation backend. Default keeps the higher-quality Google route; Argos is offline but lower quality.",
     )
+    parser.add_argument(
+        "--translation-refine",
+        choices=["off", "auto", "require"],
+        default=DEFAULT_TRANSLATION_REFINE,
+        help="Optional LLM proofread pass after machine translation. require stops if refinement fails.",
+    )
+    parser.add_argument(
+        "--llm-refine-base-url",
+        default=DEFAULT_LLM_REFINE_BASE_URL,
+        help="OpenAI-compatible base URL for LLM translation refinement.",
+    )
+    parser.add_argument(
+        "--llm-refine-api-key",
+        default=DEFAULT_LLM_REFINE_API_KEY,
+        help="API key for LLM translation refinement. Prefer SUBTITLE_LLM_API_KEY.",
+    )
+    parser.add_argument("--llm-refine-model", default=DEFAULT_LLM_REFINE_MODEL, help="LLM model for translation refinement")
+    parser.add_argument("--llm-refine-timeout", type=int, default=DEFAULT_LLM_REFINE_TIMEOUT, help="LLM refine request timeout seconds")
+    parser.add_argument("--llm-refine-batch-size", type=int, default=DEFAULT_LLM_REFINE_BATCH_SIZE, help="Subtitle blocks per LLM refine request")
     parser.add_argument("--wrap-width", type=int, default=DEFAULT_WRAP_WIDTH, help="Approximate CJK line wrap width")
     parser.add_argument(
         "--verbose-json",
@@ -535,6 +757,12 @@ def main() -> int:
             source_lang=args.source_lang,
             target_lang=args.target_lang,
             translator_backend=args.translator_backend,
+            translation_refine=args.translation_refine,
+            llm_refine_base_url=args.llm_refine_base_url,
+            llm_refine_api_key=args.llm_refine_api_key,
+            llm_refine_model=args.llm_refine_model,
+            llm_refine_timeout=args.llm_refine_timeout,
+            llm_refine_batch_size=args.llm_refine_batch_size,
             wrap_width=args.wrap_width,
             verbose_json_override=verbose_override,
         )
