@@ -100,27 +100,7 @@ Useful overrides:
 
 ## Transcription
 
-The wrapper currently installs runtime dependencies with `uv` and defaults to:
-
-```text
-MLX Whisper -> faster-whisper -> whisper.cpp server fallback
-```
-
-You can force a specific engine:
-
-```bash
-./burn_bilingual_link.sh "https://example.com/video-url" --transcriber mlx
-./burn_bilingual_link.sh "https://example.com/video-url" --transcriber faster
-./burn_bilingual_link.sh "https://example.com/video-url" --transcriber server
-```
-
-For English videos where local transcription accuracy and speed matter more than the most conservative default, use:
-
-```bash
-./burn_bilingual_link.sh "https://example.com/video-url" --quality accurate
-```
-
-Accurate mode uses this ladder:
+The wrapper currently installs runtime dependencies with `uv` and defaults to the high-accuracy local ladder:
 
 ```text
 Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
@@ -129,16 +109,32 @@ Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
 -> whisper.cpp server fallback
 ```
 
+You can force a specific engine:
+
+```bash
+./burn_bilingual_link.sh "https://example.com/video-url" --transcriber parakeet-v2
+./burn_bilingual_link.sh "https://example.com/video-url" --transcriber mlx
+./burn_bilingual_link.sh "https://example.com/video-url" --transcriber faster
+./burn_bilingual_link.sh "https://example.com/video-url" --transcriber server
+```
+
+The default is equivalent to:
+
+```bash
+./burn_bilingual_link.sh "https://example.com/video-url" --quality accurate
+```
+
 Notes:
 
 - Parakeet v2 is English-focused and fast on Apple Silicon through `parakeet-mlx`.
 - The Parakeet v2 model used here is `mlx-community/parakeet-tdt-0.6b-v2`.
 - Set `SUBTITLE_MODEL_CACHE_ROOT` if you want Parakeet/Hugging Face model files stored outside the default cache path.
 - This workflow intentionally uses Parakeet v2 only. It does not download Parakeet v3.
-- To force Parakeet v2 without fallback:
+
+For a lighter dependency path that skips Parakeet and starts with MLX Whisper:
 
 ```bash
-./burn_bilingual_link.sh "https://example.com/video-url" --transcriber parakeet-v2
+./burn_bilingual_link.sh "https://example.com/video-url" --quality fast
 ```
 
 The default whisper.cpp server URL is:

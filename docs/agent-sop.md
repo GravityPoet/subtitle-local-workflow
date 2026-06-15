@@ -8,6 +8,7 @@ Default requirements:
 - Chinese below
 - hard subtitles burned into the video
 - default profile: `news-box`
+- default transcription quality: `accurate`
 - output root: `$HOME/Downloads/bilingual-output`, unless `SUBTITLE_OUTPUT_ROOT` is set
 - model cache root: `$HOME/Tools/Local-LLM`, unless `SUBTITLE_MODEL_CACHE_ROOT` is set
 - the wrapper forces Hugging Face caches under the model cache root for the subprocess
@@ -19,13 +20,7 @@ Run from the repository root:
 ./burn_bilingual_link.sh "<video-url>"
 ```
 
-For English videos where higher local ASR accuracy/speed is preferred:
-
-```bash
-./burn_bilingual_link.sh "<video-url>" --quality accurate
-```
-
-`--quality accurate` means:
+The default transcription ladder is `--quality accurate`, which means:
 
 ```text
 Parakeet TDT 0.6B v2 via parakeet-mlx (`mlx-community/parakeet-tdt-0.6b-v2`)
