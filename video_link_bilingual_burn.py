@@ -1311,8 +1311,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--quality",
         choices=["fast", "accurate"],
-        default="fast",
-        help="Transcription quality ladder. fast tries MLX first; accurate tries Parakeet v2 first.",
+        default="accurate",
+        help="Transcription quality ladder. accurate tries Parakeet v2 first; fast tries MLX first.",
     )
     parser.add_argument("--server-timeout", type=int, default=15, help="whisper.cpp server request timeout seconds")
     parser.add_argument("--transcribe-language", default="auto", help="Whisper language code, or auto")
