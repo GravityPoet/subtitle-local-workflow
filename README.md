@@ -96,22 +96,6 @@ SUBTITLE_OUTPUT_ROOT="/absolute/path/to/output" ./burn_bilingual_link.sh "https:
 ```
 *注：为保持系统环境干净整洁，模型文件统一沙盒缓存在 `$HOME/Tools/Local-LLM`（可通过 `SUBTITLE_MODEL_CACHE_ROOT` 环境变量更改）。*
 
-### 🧩 SmartSub 接入 Parakeet v2
-SmartSub 原生只识别 Whisper / whisper.cpp。若想让 SmartSub 的「本地 Whisper 命令」实际调用 Parakeet v2，可以使用本仓库提供的 Whisper-compatible bridge：
-
-```bash
-chmod +x smartsub_parakeet_whisper.sh smartsub_parakeet_whisper.py
-ln -sf "$PWD/smartsub_parakeet_whisper.sh" /opt/homebrew/bin/whisper
-```
-
-然后在 SmartSub 设置里开启「使用本地 Whisper 命令」，命令填：
-
-```bash
-/absolute/path/to/subtitle-local-workflow/smartsub_parakeet_whisper.sh "${audioFile}" --model ${whisperModel} --output_format srt --output_dir "${outputDir}" --language ${sourceLanguage}
-```
-
-这个桥只支持英文识别和 SRT 输出，模型仍会缓存到 `$HOME/Tools/Local-LLM`。
-
 ### 🌍 纯本地翻译支持 (Offline Translation)
 默认使用 Google 翻译引擎。如需体验完全离线的本地翻译体验，可以使用 `argostranslate`：
 ```bash
