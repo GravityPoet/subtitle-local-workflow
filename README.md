@@ -144,9 +144,9 @@ If this app has saved your time, protected your data, or simplified your workflo
 *   🌟 Giving us a **Star** (It really helps boost our visibility!).
 *   ☕ **Buying us a coffee** to support our continuous time and effort spent on maintenance and testing (please mention your GitHub account).
 
-| WeChat Sponsor | PayPal |
+| PayPal | WeChat Sponsor |
 | :---: | :---: |
-| <img src="./docs/sponsors/wechat_pay.jpg" width="220" alt="WeChat Sponsor" /> | <img src="./docs/sponsors/paypal.jpg" width="220" alt="PayPal" /> |
+| <img src="./docs/sponsors/paypal.jpg" width="220" alt="PayPal" /> | <img src="./docs/sponsors/wechat_pay.jpg" width="220" alt="WeChat Sponsor" /> |
 
 ---
 

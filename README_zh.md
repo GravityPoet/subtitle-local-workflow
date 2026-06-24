@@ -144,9 +144,9 @@ uv run --python 3.11 --with deep-translator \
 *   🌟 给我们一个 **Star**（这是对我们最大的精神鼓励！）。
 *   ☕ **请作者喝一杯咖啡**，支持我们持续投入时间精力进行维护和测试（请备注您的 GitHub 账号）。
 
-| 微信赞赏码 | PayPal 收款码 |
+| PayPal 收款码 | 微信赞赏码 |
 | :---: | :---: |
-| <img src="./docs/sponsors/wechat_pay.jpg" width="220" alt="微信赞赏码" /> | <img src="./docs/sponsors/paypal.jpg" width="220" alt="PayPal 收款码" /> |
+| <img src="./docs/sponsors/paypal.jpg" width="220" alt="PayPal 收款码" /> | <img src="./docs/sponsors/wechat_pay.jpg" width="220" alt="微信赞赏码" /> |
 
 ---
 
