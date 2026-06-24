@@ -131,5 +131,25 @@ uv run --python 3.11 --with deep-translator \
 ## 👨‍💻 Agent SOP
 For AI coding agents integrating with this repository, we have prepared a dedicated integration guide. See: [`docs/agent-sop.md`](docs/agent-sop.md)
 
+## 🤝 Support & Sponsorship
+
+**Why Sponsor Subtitle Local Workflow?**
+
+**Subtitle Local Workflow** is built on a simple promise: complete privacy, total tool control, and zero recurring fees. Keeping this project 100% local, free, and open-source requires continuous dedication, and your support directly fuels our journey:
+*   **Save on Subscription Fees**: Instead of paying SaaS platforms per minute of transcription or subscribing to expensive monthly plans, this app utilizes your local GPU/CPU. We help content creators and developers save hundreds of dollars annually.
+*   **Ongoing Maintenance & Testing Effort**: To provide a seamless "just unzip and run" experience, we spend significant time and effort compiling multi-architecture sidecars, adapting to different OS updates, and conducting real-device compatibility testing.
+*   **Backing the Future of Offline AI**: Your donations directly support the research and implementation of next-gen offline local LLM integrations, enhanced VAD algorithms, and keeping this app free of trackers and ads.
+
+If this app has saved your time, protected your data, or simplified your workflow, please consider:
+*   🌟 Giving us a **Star** (It really helps boost our visibility!).
+*   ☕ **Buying us a coffee** to support our continuous time and effort spent on maintenance and testing (please mention your GitHub account).
+
+| WeChat Sponsor | PayPal |
+| :---: | :---: |
+| <img src="./docs/sponsors/wechat_pay.jpg" width="220" alt="WeChat Sponsor" /> | <img src="./docs/sponsors/paypal.jpg" width="220" alt="PayPal" /> |
+
+---
+
 ## 📝 License
 This project is open-source. For more details, see the [LICENSE](LICENSE) file.
+
